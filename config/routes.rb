@@ -1,5 +1,4 @@
 Rails.application.routes.draw do
-
   resources :operations
   resources :units
   resources :stocks
@@ -12,7 +11,6 @@ Rails.application.routes.draw do
   resources :sessions
   resources :users
   resources :rights
-
   # The priority is based upon order of creation: first created -> highest priority.
   # See how all your routes lay out with "rake routes".
 
