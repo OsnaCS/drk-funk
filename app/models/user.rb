@@ -1,13 +1,13 @@
 class User < ActiveRecord::Base
-  after_validation :encrypt_password
+  before_save :encrypt_password
   after_create :default_values
   before_save :nil_if_blank
-  before_save { self.email = email.downcase if email}
+  before_validation { self.email = email.downcase if email}
+  before_validation { self.username = username.downcase if username}
   after_save :create_rights
 
 
-  attr_accessor :password_unhashed
-  attr_accessor :remember_token
+  attr_accessor :password_unhashed, :password_unhashed_confirmation, :remember_token, :reset_token, :activation_token
 
   has_one :right, dependent: :destroy
 
@@ -35,9 +35,9 @@ class User < ActiveRecord::Base
 
   def self.authenticate(username, password_unhashed)
     return nil if username == nil
+    username.downcase!
     user = find_by_username(username)
     if user == nil
-      username.downcase!
       user = find_by_email(username)
     end
     if user && user.password == BCrypt::Engine.hash_secret(password_unhashed, user.salt)
@@ -49,7 +49,7 @@ class User < ActiveRecord::Base
 
 
   def encrypt_password
-    if password_unhashed.present?
+    if self.password_unhashed.present?
       self.salt = BCrypt::Engine.generate_salt
       self.password = BCrypt::Engine.hash_secret(password_unhashed, salt)
     end
@@ -72,6 +72,41 @@ class User < ActiveRecord::Base
 
   def forget
     update_attribute(:cookies, nil)
+  end
+
+  def activated?(token)
+    return false if reset_key == nil
+    BCrypt::Password.new(reset_key).is_password?(token)
+  end
+
+  def activate
+    self.password_unhashed = SecureRandom.urlsafe_base64(6, false)
+    save
+    send_activation_email
+  end
+=begin
+  def create_activation_key
+    self.activation_token = User.new_token
+    update_attribute(:reset_key, BCrypt::Password.create(activation_token))
+  end
+=end
+
+  def send_activation_email
+    UserMailer.account_activation(self, self.password_unhashed).deliver_now
+  end
+
+  def create_reset_key
+      self.reset_token = User.new_token
+      update_attribute(:reset_key, BCrypt::Password.create(reset_token))
+      update_attribute(:reset_sent_at, Time.zone.now)
+  end
+
+  def send_password_reset_email
+    UserMailer.password_reset(self).deliver_now
+  end
+
+  def password_reset_expired?
+    reset_sent_at <= 2.hours.ago
   end
 
   protected
@@ -132,5 +167,4 @@ class User < ActiveRecord::Base
     r.save
 
   end
-
 end
